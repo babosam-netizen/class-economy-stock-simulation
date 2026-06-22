@@ -176,17 +176,43 @@ export default function TeacherDashboard() {
     return sessionStorage.getItem('teacherAuth') === 'true';
   });
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [teacherPassword, setTeacherPassword] = useState(() =>
+    localStorage.getItem('economyStock_teacherPassword') || ''
+  );
+  const [changePwInput, setChangePwInput] = useState('');
+  const [changePwConfirm, setChangePwConfirm] = useState('');
+  const [showChangePw, setShowChangePw] = useState(false);
 
   const handleLogin = () => {
-    if (password.trim() === '12346') {
+    if (!teacherPassword) {
+      // 최초 비밀번호 설정
+      if (password.trim().length < 4) { alert('비밀번호는 4자 이상 입력해주세요.'); return; }
+      if (password.trim() !== confirmPassword.trim()) { alert('비밀번호 확인이 일치하지 않습니다.'); return; }
+      const newPw = password.trim();
+      localStorage.setItem('economyStock_teacherPassword', newPw);
+      setTeacherPassword(newPw);
       setIsAuthenticated(true);
-      setError('');
-      // 세션 유지 (브라우저 종료 전까지)
       sessionStorage.setItem('teacherAuth', 'true');
+      setPassword(''); setConfirmPassword('');
     } else {
-      alert('암호가 올바르지 않습니다.');
+      if (password.trim() === teacherPassword) {
+        setIsAuthenticated(true);
+        sessionStorage.setItem('teacherAuth', 'true');
+      } else {
+        alert('암호가 올바르지 않습니다.');
+      }
     }
+  };
+
+  const handleChangePassword = () => {
+    if (changePwInput.trim().length < 4) { alert('비밀번호는 4자 이상 입력해주세요.'); return; }
+    if (changePwInput.trim() !== changePwConfirm.trim()) { alert('비밀번호 확인이 일치하지 않습니다.'); return; }
+    const newPw = changePwInput.trim();
+    localStorage.setItem('economyStock_teacherPassword', newPw);
+    setTeacherPassword(newPw);
+    setChangePwInput(''); setChangePwConfirm(''); setShowChangePw(false);
+    alert('✅ 비밀번호가 변경되었습니다.');
   };
   
   const roomCode = useGameStore(state => state.roomCode);
@@ -265,27 +291,42 @@ export default function TeacherDashboard() {
   }, [roomCode, activeRoomCode]);
 
   if (!isAuthenticated) {
+    const isSetup = !teacherPassword;
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
         <div className="glass p-10 rounded-3xl shadow-xl border border-gray-100 max-w-sm w-full text-center">
-          <div className="text-5xl mb-6">🔐</div>
-          <h2 className="text-2xl font-black text-gray-800 mb-2">선생님 확인</h2>
-          <p className="text-gray-500 text-sm mb-8 font-medium">관리자 암호를 입력하여 대시보드에 접속하세요.</p>
+          <div className="text-5xl mb-6">{isSetup ? '🔑' : '🔐'}</div>
+          <h2 className="text-2xl font-black text-gray-800 mb-2">
+            {isSetup ? '비밀번호 초기 설정' : '선생님 확인'}
+          </h2>
+          <p className="text-gray-500 text-sm mb-8 font-medium">
+            {isSetup
+              ? '이 기기에서 처음 사용합니다. 교사용 비밀번호를 설정하세요.'
+              : '관리자 암호를 입력하여 대시보드에 접속하세요.'}
+          </p>
           <input
             type="password"
-            placeholder="암호 입력"
+            placeholder={isSetup ? '새 비밀번호 (4자 이상)' : '암호 입력'}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleLogin();
-            }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !isSetup) handleLogin(); }}
             className="w-full p-4 border border-gray-300 rounded-2xl mb-4 text-center font-bold tracking-widest focus:ring-2 focus:ring-indigo-500 bg-gray-50 shadow-inner"
           />
+          {isSetup && (
+            <input
+              type="password"
+              placeholder="비밀번호 확인"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleLogin(); }}
+              className="w-full p-4 border border-gray-300 rounded-2xl mb-4 text-center font-bold tracking-widest focus:ring-2 focus:ring-indigo-500 bg-gray-50 shadow-inner"
+            />
+          )}
           <button
             onClick={handleLogin}
             className="w-full bg-indigo-600 text-white font-black py-4 rounded-2xl shadow-md hover:bg-indigo-700 transition-all hover:-translate-y-0.5"
           >
-            대시보드 접속하기
+            {isSetup ? '✅ 비밀번호 설정하기' : '대시보드 접속하기'}
           </button>
         </div>
       </div>
@@ -478,6 +519,44 @@ export default function TeacherDashboard() {
                   <p className="text-[10px] text-orange-500 font-bold text-left">⚠️ 링크를 입력하면 대시보드의 신문다운 QR 버튼이 활성화됩니다</p>
                 )}
               </div>
+            </div>
+
+            {/* 🔑 교사 비밀번호 변경 */}
+            <div className="border-t border-gray-200 pt-6">
+              <h3 className="text-sm font-bold text-gray-500 mb-3 flex items-center justify-between">
+                <span className="flex items-center gap-2"><span>🔑</span> 교사 비밀번호 변경</span>
+                <button
+                  onClick={() => { setShowChangePw(v => !v); setChangePwInput(''); setChangePwConfirm(''); }}
+                  className="text-[10px] text-indigo-500 hover:text-indigo-700 font-bold underline"
+                >
+                  {showChangePw ? '취소' : '변경하기'}
+                </button>
+              </h3>
+              {showChangePw && (
+                <div className="space-y-2">
+                  <input
+                    type="password"
+                    value={changePwInput}
+                    onChange={(e) => setChangePwInput(e.target.value)}
+                    placeholder="새 비밀번호 (4자 이상)"
+                    className="w-full p-3 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-400 bg-gray-50 text-center font-bold tracking-widest"
+                  />
+                  <input
+                    type="password"
+                    value={changePwConfirm}
+                    onChange={(e) => setChangePwConfirm(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleChangePassword(); }}
+                    placeholder="비밀번호 확인"
+                    className="w-full p-3 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-400 bg-gray-50 text-center font-bold tracking-widest"
+                  />
+                  <button
+                    onClick={handleChangePassword}
+                    className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition-all text-sm"
+                  >
+                    ✅ 비밀번호 변경 저장
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
