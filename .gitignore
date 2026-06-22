@@ -1,0 +1,28 @@
+# 환경변수 (절대 GitHub에 올리지 마세요!)
+.env
+.env.local
+.env.*.local
+
+# 빌드 결과물
+dist/
+dist-ssr/
+
+# 의존성
+node_modules/
+
+# Firebase
+.firebase/
+.firebaserc
+
+# 로그
+*.log
+npm-debug.log*
+
+# 에디터
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# 배포 스크립트 (NAS 경로가 포함되어 있어 개인용)
+deploy.sh
