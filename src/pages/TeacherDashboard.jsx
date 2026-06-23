@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ref, update } from 'firebase/database';
+import { ref, update, get, set } from 'firebase/database';
 import { database } from '../lib/firebase';
 import useGameStore from '../store/gameStore';
 import { stockData } from '../data/stocks';
@@ -177,24 +177,40 @@ export default function TeacherDashboard() {
   });
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [teacherPassword, setTeacherPassword] = useState(() =>
-    localStorage.getItem('economyStock_teacherPassword') || ''
-  );
-  const [changePwInput, setChangePwInput] = useState('');
-  const [changePwConfirm, setChangePwConfirm] = useState('');
-  const [showChangePw, setShowChangePw] = useState(false);
+  const [teacherPassword, setTeacherPassword] = useState('');
+  const [isLoadingPassword, setIsLoadingPassword] = useState(true);
 
-  const handleLogin = () => {
+  useEffect(() => {
+    const pwRef = ref(database, 'settings/teacherPassword');
+    get(pwRef).then((snapshot) => {
+      if (snapshot.exists()) {
+        setTeacherPassword(snapshot.val());
+      } else {
+        setTeacherPassword('');
+      }
+      setIsLoadingPassword(false);
+    }).catch((err) => {
+      console.error("비밀번호 로드 실패:", err);
+      setIsLoadingPassword(false);
+    });
+  }, []);
+
+  const handleLogin = async () => {
     if (!teacherPassword) {
       // 최초 비밀번호 설정
       if (password.trim().length < 4) { alert('비밀번호는 4자 이상 입력해주세요.'); return; }
       if (password.trim() !== confirmPassword.trim()) { alert('비밀번호 확인이 일치하지 않습니다.'); return; }
       const newPw = password.trim();
-      localStorage.setItem('economyStock_teacherPassword', newPw);
-      setTeacherPassword(newPw);
-      setIsAuthenticated(true);
-      sessionStorage.setItem('teacherAuth', 'true');
-      setPassword(''); setConfirmPassword('');
+      try {
+        await set(ref(database, 'settings/teacherPassword'), newPw);
+        setTeacherPassword(newPw);
+        setIsAuthenticated(true);
+        sessionStorage.setItem('teacherAuth', 'true');
+        setPassword(''); setConfirmPassword('');
+      } catch (err) {
+        console.error("비밀번호 저장 실패:", err);
+        alert("비밀번호 저장에 실패했습니다. Firebase 연결 상태를 확인해주세요.");
+      }
     } else {
       if (password.trim() === teacherPassword) {
         setIsAuthenticated(true);
@@ -203,16 +219,6 @@ export default function TeacherDashboard() {
         alert('암호가 올바르지 않습니다.');
       }
     }
-  };
-
-  const handleChangePassword = () => {
-    if (changePwInput.trim().length < 4) { alert('비밀번호는 4자 이상 입력해주세요.'); return; }
-    if (changePwInput.trim() !== changePwConfirm.trim()) { alert('비밀번호 확인이 일치하지 않습니다.'); return; }
-    const newPw = changePwInput.trim();
-    localStorage.setItem('economyStock_teacherPassword', newPw);
-    setTeacherPassword(newPw);
-    setChangePwInput(''); setChangePwConfirm(''); setShowChangePw(false);
-    alert('✅ 비밀번호가 변경되었습니다.');
   };
   
   const roomCode = useGameStore(state => state.roomCode);
@@ -289,6 +295,14 @@ export default function TeacherDashboard() {
       useGameStore.getState().attachListener(roomCode);
     }
   }, [roomCode, activeRoomCode]);
+
+  if (isLoadingPassword) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
+        <LoadingSpinner size="w-16 h-16" color="border-indigo-500" />
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     const isSetup = !teacherPassword;
@@ -519,44 +533,6 @@ export default function TeacherDashboard() {
                   <p className="text-[10px] text-orange-500 font-bold text-left">⚠️ 링크를 입력하면 대시보드의 신문다운 QR 버튼이 활성화됩니다</p>
                 )}
               </div>
-            </div>
-
-            {/* 🔑 교사 비밀번호 변경 */}
-            <div className="border-t border-gray-200 pt-6">
-              <h3 className="text-sm font-bold text-gray-500 mb-3 flex items-center justify-between">
-                <span className="flex items-center gap-2"><span>🔑</span> 교사 비밀번호 변경</span>
-                <button
-                  onClick={() => { setShowChangePw(v => !v); setChangePwInput(''); setChangePwConfirm(''); }}
-                  className="text-[10px] text-indigo-500 hover:text-indigo-700 font-bold underline"
-                >
-                  {showChangePw ? '취소' : '변경하기'}
-                </button>
-              </h3>
-              {showChangePw && (
-                <div className="space-y-2">
-                  <input
-                    type="password"
-                    value={changePwInput}
-                    onChange={(e) => setChangePwInput(e.target.value)}
-                    placeholder="새 비밀번호 (4자 이상)"
-                    className="w-full p-3 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-400 bg-gray-50 text-center font-bold tracking-widest"
-                  />
-                  <input
-                    type="password"
-                    value={changePwConfirm}
-                    onChange={(e) => setChangePwConfirm(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleChangePassword(); }}
-                    placeholder="비밀번호 확인"
-                    className="w-full p-3 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-400 bg-gray-50 text-center font-bold tracking-widest"
-                  />
-                  <button
-                    onClick={handleChangePassword}
-                    className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition-all text-sm"
-                  >
-                    ✅ 비밀번호 변경 저장
-                  </button>
-                </div>
-              )}
             </div>
           </div>
         </div>
