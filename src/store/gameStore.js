@@ -239,16 +239,39 @@ const useGameStore = create(
         
         if (students) {
           const rate = stockData[currentRound]?.savingsRate || 0;
+          const currentCompanies = stockData[currentRound]?.companies || [];
 
           Object.entries(students).forEach(([studentId, student]) => {
-            // 이번 라운드(currentRound) 종료 시점의 이자 정산 (다음 라운드 시작 자본금)
+            if (!student) return;
+
+            // 1. 예금 및 이자 계산
             const savings = student.savings || 0;
             const interest = Math.floor(savings * rate);
-            const newCapital = (student.capital || 0) + savings + interest;
+            
+            // 2. 주식 전량 매도(현금화) 계산
+            let stockValue = 0;
+            if (student.portfolio) {
+              Object.entries(student.portfolio).forEach(([cId, q]) => {
+                const comp = currentCompanies.find(c => c.id === cId);
+                if (comp) {
+                  stockValue += (q * comp.current);
+                }
+              });
+            }
+            
+            // 최종 정산 총 자산 = 현금 + 예금 + 이자 + 주식 평가액
+            const finalTotalAsset = (student.capital || 0) + savings + interest + stockValue;
 
-            updates[`rooms/${roomCode}/students/${studentId}/capital`] = newCapital;
+            // 다음 라운드의 시작 자본금은 최종 정산된 총 자산이 됨
+            updates[`rooms/${roomCode}/students/${studentId}/capital`] = finalTotalAsset;
             updates[`rooms/${roomCode}/students/${studentId}/savings`] = 0;
+            updates[`rooms/${roomCode}/students/${studentId}/portfolio`] = null; // 주식은 전량 현금화됨
             updates[`rooms/${roomCode}/students/${studentId}/lastInterest`] = interest;
+
+            // 이번 라운드 히스토리에 최종 정산 자산 및 현금화 완료된 내역 기록
+            updates[`rooms/${roomCode}/students/${studentId}/history/${currentRound}/finalTotalAsset`] = finalTotalAsset;
+            updates[`rooms/${roomCode}/students/${studentId}/history/${currentRound}/interest`] = interest;
+            updates[`rooms/${roomCode}/students/${studentId}/history/${currentRound}/stockValue`] = stockValue;
 
             // 다음 라운드(nextRound) 데이터가 이미 히스토리에 있다면 복구 (비파괴 이동)
             const nextHistory = student.history?.[nextRound];
@@ -260,6 +283,10 @@ const useGameStore = create(
               updates[`rooms/${roomCode}/students/${studentId}/investReason`] = nextHistory.investReason || '';
               updates[`rooms/${roomCode}/students/${studentId}/reason`] = nextHistory.reason || '';
               updates[`rooms/${roomCode}/students/${studentId}/retrospectiveRaw`] = nextHistory.retrospectiveRaw || null;
+              
+              // 다음 라운드 복구 시 기존의 포트폴리오와 저축액 복원
+              updates[`rooms/${roomCode}/students/${studentId}/portfolio`] = nextHistory.portfolio || null;
+              updates[`rooms/${roomCode}/students/${studentId}/savings`] = nextHistory.savings || 0;
             } else {
               // 신규 라운드 진입 시 초기화
               updates[`rooms/${roomCode}/students/${studentId}/hasTraded`] = false;
@@ -292,25 +319,11 @@ const useGameStore = create(
         
         if (students) {
           Object.entries(students).forEach(([studentId, student]) => {
-            // 1. 자산 상태 복구 (해당 라운드 시작 시점 = 전 라운드 종료 시점)
+            if (!student) return;
             const prevHistory = student.history?.[newRound - 1];
-            
-            if (newRound === 1) {
-              updates[`rooms/${roomCode}/students/${studentId}/capital`] = 300000;
-              updates[`rooms/${roomCode}/students/${studentId}/portfolio`] = null;
-              updates[`rooms/${roomCode}/students/${studentId}/savings`] = 0;
-            } else if (prevHistory) {
-              const prevSavings = prevHistory.savings || 0;
-              const interestRate = stockData[newRound - 1]?.savingsRate || 0;
-              const interest = Math.floor(prevSavings * interestRate);
-              const startCapital = (prevHistory.capital || 0) + prevSavings + interest;
+            const prevTotal = prevHistory ? (prevHistory.finalTotalAsset || ((prevHistory.capital || 0) + (prevHistory.savings || 0))) : 300000;
 
-              updates[`rooms/${roomCode}/students/${studentId}/capital`] = startCapital;
-              updates[`rooms/${roomCode}/students/${studentId}/portfolio`] = prevHistory.portfolio || null;
-              updates[`rooms/${roomCode}/students/${studentId}/savings`] = 0;
-            }
-
-            // 2. 되돌아가는 라운드(newRound)에 이미 작성했던 데이터가 있다면 복구 (비파괴)
+            // 1. 되돌아가는 라운드(newRound)에 이미 작성했던 데이터가 있다면 복구 (비파괴)
             const currentHistory = student.history?.[newRound];
             if (currentHistory) {
               updates[`rooms/${roomCode}/students/${studentId}/hasTraded`] = currentHistory.hasTraded || false;
@@ -320,7 +333,17 @@ const useGameStore = create(
               updates[`rooms/${roomCode}/students/${studentId}/investReason`] = currentHistory.investReason || '';
               updates[`rooms/${roomCode}/students/${studentId}/reason`] = currentHistory.reason || ''; 
               updates[`rooms/${roomCode}/students/${studentId}/retrospectiveRaw`] = currentHistory.retrospectiveRaw || null;
+              
+              // 매매 상태 및 자산 복구
+              updates[`rooms/${roomCode}/students/${studentId}/capital`] = currentHistory.capital !== undefined ? currentHistory.capital : prevTotal;
+              updates[`rooms/${roomCode}/students/${studentId}/portfolio`] = currentHistory.portfolio || null;
+              updates[`rooms/${roomCode}/students/${studentId}/savings`] = currentHistory.savings || 0;
             } else {
+              // 매매 내역이 없으면 초기 상태로 설정
+              updates[`rooms/${roomCode}/students/${studentId}/capital`] = prevTotal;
+              updates[`rooms/${roomCode}/students/${studentId}/portfolio`] = null;
+              updates[`rooms/${roomCode}/students/${studentId}/savings`] = 0;
+              
               updates[`rooms/${roomCode}/students/${studentId}/hasTraded`] = false;
               updates[`rooms/${roomCode}/students/${studentId}/hasSubmittedReason`] = false;
               updates[`rooms/${roomCode}/students/${studentId}/hasSubmittedRetrospective`] = false;

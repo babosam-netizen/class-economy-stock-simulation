@@ -859,7 +859,7 @@ export default function TeacherDashboard() {
                       onClick={handleAdvanceRound}
                       className={`w-full py-4 rounded-xl font-black text-lg transition-all ${totalStudents > 0 && finishedRetrospectives >= totalStudents ? 'bg-gradient-to-r from-purple-500 to-pink-600 text-white shadow-lg animate-pulse ring-4 ring-purple-300' : 'bg-gray-800 text-white hover:bg-black shadow-md'}`}
                     >
-                      {currentRound >= 7 ? '마무리 글 정리 보내기 🏆' : '다음 시대로 진행 ➡️'}
+                      {currentRound >= 7 ? '마무리 글 정리 보내기 🏆' : '현금화하고 다음으로 넘기기 ➡️'}
                     </button>
                     <button onClick={handleToggleResult} className="text-xs text-gray-400 hover:text-red-500 underline mt-2">
                       (실수용) 결과 다시 숨기기

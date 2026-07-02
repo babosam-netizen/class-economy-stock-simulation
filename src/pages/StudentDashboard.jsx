@@ -28,6 +28,131 @@ const Sparkline = ({ data, color = "#ef4444", width = 80, height = 30 }) => {
   );
 };
 
+const AssetChangeChart = ({ assetData }) => {
+  const width = 600;
+  const height = 280;
+  const paddingLeft = 60;
+  const paddingRight = 40;
+  const paddingTop = 40;
+  const paddingBottom = 40;
+
+  const values = assetData.map(d => d.value);
+  const maxVal = Math.max(...values, 300000) * 1.15; // 상단 여유
+  const minVal = Math.min(...values, 0);
+
+  const getX = (index) => {
+    const usableWidth = width - paddingLeft - paddingRight;
+    return paddingLeft + (index / (assetData.length - 1)) * usableWidth;
+  };
+
+  const getY = (val) => {
+    const usableHeight = height - paddingTop - paddingBottom;
+    const range = maxVal - minVal || 1;
+    return height - paddingBottom - ((val - minVal) / range) * usableHeight;
+  };
+
+  const points = assetData.map((d, i) => `${getX(i)},${getY(d.value)}`).join(' ');
+
+  // 그라데이션 영역을 위한 path 생성
+  const areaPath = `
+    M ${getX(0)} ${height - paddingBottom}
+    ${assetData.map((d, i) => `L ${getX(i)} ${getY(d.value)}`).join(' ')}
+    L ${getX(assetData.length - 1)} ${height - paddingBottom}
+    Z
+  `;
+
+  return (
+    <div className="bg-white p-6 rounded-[32px] shadow-xl border border-indigo-50/50 w-full overflow-hidden">
+      <style>{`
+        @keyframes dash {
+          to {
+            stroke-dashoffset: 0;
+          }
+        }
+      `}</style>
+      <h3 className="text-xl font-black text-indigo-900 mb-6 flex items-center gap-2 justify-center">
+        <span>📈</span> 시대별 자산 변화 그래프
+      </h3>
+      <div className="relative w-full overflow-x-auto">
+        <svg viewBox={`0 0 ${width} ${height}`} className="w-full min-w-[550px] h-auto overflow-visible">
+          <defs>
+            <linearGradient id="chart-grad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#4f46e5" stopOpacity="0.25" />
+              <stop offset="100%" stopColor="#4f46e5" stopOpacity="0.0" />
+            </linearGradient>
+          </defs>
+
+          {/* 가이드 격자 라인 */}
+          {[0, 0.25, 0.5, 0.75, 1].map((ratio, idx) => {
+            const val = minVal + (maxVal - minVal) * ratio;
+            const y = getY(val);
+            return (
+              <g key={idx}>
+                <line x1={paddingLeft} y1={y} x2={width - paddingRight} y2={y} stroke="#f1f5f9" strokeWidth="1.5" />
+                <text x={paddingLeft - 10} y={y + 4} textAnchor="end" className="text-[10px] font-black fill-gray-400 font-mono">
+                  {val >= 1000000 ? `${(val / 1000000).toFixed(1)}M` : `${Math.floor(val / 10000).toLocaleString()}만`}
+                </text>
+              </g>
+            );
+          })}
+
+          {/* 그라데이션 영역 채우기 */}
+          <path d={areaPath} fill="url(#chart-grad)" />
+
+          {/* 꺾은선 */}
+          <polyline
+            fill="none"
+            stroke="#4f46e5"
+            strokeWidth="4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            points={points}
+            strokeDasharray="1200"
+            strokeDashoffset="1200"
+            className="animate-[dash_2s_ease-in-out_forwards]"
+          />
+
+          {/* 데이터 포인트 점 및 말풍선 */}
+          {assetData.map((d, i) => {
+            const cx = getX(i);
+            const cy = getY(d.value);
+            return (
+              <g key={i} className="group/node cursor-pointer">
+                {/* 호버 효과 원 */}
+                <circle cx={cx} cy={cy} r="12" fill="#4f46e5" fillOpacity="0.15" className="scale-0 group-hover/node:scale-100 transition-transform origin-center duration-200" />
+                {/* 메인 점 */}
+                <circle cx={cx} cy={cy} r="6" fill="#4f46e5" stroke="white" strokeWidth="3" />
+                {/* 텍스트 말풍선 */}
+                <g className="transition-all duration-200">
+                  {/* 말풍선 배경 */}
+                  <rect
+                    x={cx - 40}
+                    y={cy - 30}
+                    width="80"
+                    height="18"
+                    rx="9"
+                    fill="#1e1b4b"
+                    className="shadow-sm"
+                  />
+                  {/* 말풍선 꼬리 */}
+                  <polygon points={`${cx-4},${cy-12} ${cx+4},${cy-12} ${cx},${cy-8}`} fill="#1e1b4b" />
+                  <text x={cx} y={cy - 18} textAnchor="middle" className="text-[9px] font-black fill-white font-mono leading-none">
+                    {Math.floor(d.value / 10000)}만 원
+                  </text>
+                </g>
+                {/* x축 라벨 */}
+                <text x={cx} y={height - 12} textAnchor="middle" className="text-[11px] font-black fill-indigo-900/60">
+                  {d.label}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+    </div>
+  );
+};
+
 const getCompanyHistory = (companyId, currentRound, isResultOpen) => {
   const history = [];
   for (let r = 1; r <= currentRound; r++) {
@@ -449,6 +574,26 @@ export default function StudentDashboard() {
     setOrders(futureOrders);
   };
 
+  const handleMaxOrder = (companyId) => {
+    const comp = currentCompanies.find(c => c.id === companyId);
+    if (!comp) return;
+
+    // 현재 남은 잔액(remainingCapital)으로 추가 매수 가능한 수량 계산
+    const additionalQty = Math.floor(remainingCapital / comp.prev);
+    if (additionalQty <= 0) {
+      alert("⚠️ 추가로 구매할 수 있는 잔액이 부족합니다.");
+      return;
+    }
+
+    setOrders(prev => {
+      const currentOrder = prev[companyId] || 0;
+      return {
+        ...prev,
+        [companyId]: currentOrder + additionalQty
+      };
+    });
+  };
+
   let resultTotalAssets = myData.capital || 0;
   let hasAssets = false;
   if (isResultOpen && myData.portfolio) {
@@ -520,6 +665,32 @@ export default function StudentDashboard() {
 
   // 7단계 종합 게임 종료 화면 (최종 피날레)
   if (isGameEnded) {
+    const getRoundTotalAsset = (rNum, hData) => {
+      if (!hData) return 300000;
+      if (hData.finalTotalAsset !== undefined) return hData.finalTotalAsset;
+      const rate = stockData[rNum]?.savingsRate || 0;
+      const interest = Math.floor((hData.savings || 0) * rate);
+      let total = (hData.capital || 0) + (hData.savings || 0) + interest;
+      if (hData.portfolio) {
+        Object.entries(hData.portfolio).forEach(([cId, q]) => {
+          const comp = stockData[rNum]?.companies?.find(c => c.id === cId);
+          if (comp) total += (q * comp.current);
+        });
+      }
+      return total;
+    };
+
+    const assetData = [
+      { label: '시작', value: 300000 },
+      ...[1, 2, 3, 4, 5, 6, 7].map(r => {
+        const hData = myData.history?.[r];
+        const val = getRoundTotalAsset(r, hData);
+        const nameRaw = stockData[r]?.roundName || `${r}R`;
+        const label = nameRaw.split(' ')[0];
+        return { label, value: val };
+      })
+    ];
+
     const historyList = Object.entries(myData.history || {}).sort((a, b) => Number(a[0]) - Number(b[0]));
     
     // 황금기(최고 수익 라운드) 계산
@@ -655,6 +826,10 @@ export default function StudentDashboard() {
                   </div>
                </div>
             </div>
+            
+             <div className="max-w-4xl mx-auto mt-8">
+               <AssetChangeChart assetData={assetData} />
+             </div>
           </div>
 
           {!myData.hasSubmittedFinalReview ? (
@@ -769,7 +944,6 @@ export default function StudentDashboard() {
         </div>
 
         <div className="max-w-5xl mx-auto space-y-6">
-          {/* Header with Round Info and Capital */}
           <div className="glass p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 sticky top-4 z-20 bg-white/90 backdrop-blur">
             <div>
               <div className="flex items-center gap-3 mb-1">
@@ -792,7 +966,6 @@ export default function StudentDashboard() {
             </div>
           ) : (
             <>
-              {/* 1. Strategy Section */}
               <div className="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-gray-100">
                 <h3 className="text-xl font-extrabold text-indigo-800 mb-4 flex items-center gap-2">
                   <span>📝</span> 1단계: 뉴스 분석 및 투자 전략 수립
@@ -809,13 +982,11 @@ export default function StudentDashboard() {
                 </div>
               </div>
 
-              {/* 2. Trading Section */}
               <div className="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-gray-100">
                 <h3 className="text-xl font-extrabold text-blue-800 mb-6 flex items-center gap-2">
                   <span>📈</span> 2단계: 실전 매매 및 저축
                 </h3>
                 
-                {/* Savings Sub-section */}
                 <div className="bg-gradient-to-r from-indigo-800 to-blue-900 p-6 rounded-3xl text-white mb-8 relative overflow-hidden shadow-inner">
                    <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6">
                       <div className="flex-1">
@@ -888,6 +1059,7 @@ export default function StudentDashboard() {
                               )}
                            </div>
                            <button onClick={() => handleOrderChange(company.id, 1)} disabled={remainingCapital < company.prev} className="w-10 h-10 rounded-xl bg-gray-50 text-gray-600 font-black text-xl hover:bg-green-50 hover:text-green-600 disabled:opacity-20 transition-all">+</button>
+                           <button onClick={() => handleMaxOrder(company.id)} disabled={remainingCapital < company.prev} className="px-3.5 h-10 rounded-xl bg-indigo-50 text-indigo-600 font-black text-xs hover:bg-indigo-600 hover:text-white disabled:opacity-20 transition-all shrink-0 ml-1">최대</button>
                         </div>
                       </div>
                     );
